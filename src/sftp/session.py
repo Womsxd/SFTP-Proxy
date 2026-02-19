@@ -73,6 +73,19 @@ class Session:
         path = path.replace('\\', '/')
         while '//' in path:
             path = path.replace('//', '/')
+        parts = path.split('/')
+        result = []
+        for part in parts:
+            if part == '' or part == '.':
+                continue
+            elif part == '..':
+                if result and result[-1] != '..':
+                    result.pop()
+                else:
+                    result.append(part)
+            else:
+                result.append(part)
+        path = '/' + '/'.join(result) if result else '/'
         if path != '/' and path.endswith('/'):
             path = path[:-1]
         if not path.startswith('/'):

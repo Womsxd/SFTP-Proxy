@@ -328,7 +328,7 @@ class SFTPHandler(SFTPServerInterface):
         files_in_dir = []
         for allowed_path in self.session.allowed_paths:
             allowed_dir = os.path.dirname(allowed_path)
-            if allowed_dir == normalized_path or (normalized_path == '/' and allowed_dir == ''):
+            if allowed_dir == normalized_path or (normalized_path == '/' and allowed_dir in ('', '/')):
                 try:
                     item = self.storage.stat(allowed_path)
                     attr = SFTPAttributes()
@@ -418,8 +418,17 @@ class SFTPHandler(SFTPServerInterface):
         path = path.replace('\\', '/')
         while '//' in path:
             path = path.replace('//', '/')
-        if not path.startswith('/'):
-            path = '/' + path
+        parts = path.split('/')
+        result = []
+        for part in parts:
+            if part == '' or part == '.':
+                continue
+            elif part == '..':
+                if result:
+                    result.pop()
+            else:
+                result.append(part)
+        path = '/' + '/'.join(result) if result else '/'
         return path
 
     def realpath(self, path: str) -> str:

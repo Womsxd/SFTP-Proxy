@@ -216,6 +216,7 @@ class SFTPInterface(ServerInterface):
                 s3_mode=self.s3_mode,
                 storage_type=self.storage_type
             )
+            sftp.start()
             return True
         return False
 
