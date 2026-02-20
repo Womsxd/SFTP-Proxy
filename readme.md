@@ -30,8 +30,17 @@ cp config.yaml.example config.yaml
 ### 3. 启动服务
 
 ```bash
+# 启动前测试配置
+python main.py --test
+
+# 启动服务
 python main.py
 ```
+
+服务启动时自动验证配置：
+- `api.admin_token` 必须配置且长度≥16字符
+- 使用JWT模式时 `auth.jwt.secret` 必须配置且长度≥32字符
+- 验证失败时服务拒绝启动
 
 ## 使用方式
 
@@ -67,6 +76,7 @@ curl -X POST http://localhost:8080/api/tokens \
     "paths": ["file1.txt", "dir1/"],
     "expire": 600,
     "download_limits": {"file1.txt": 3},
+    "rate_limit": 1024,
     "auth_type": "token"
   }'
 ```
@@ -97,6 +107,12 @@ curl http://localhost:8080/api/tokens/your-token/downloads \
 ```bash
 curl -X POST http://localhost:8080/api/admin/reload \
   -H "Authorization: Bearer your-admin-secret-token"
+```
+
+#### 健康检查
+
+```bash
+curl http://localhost:8080/health
 ```
 
 ## 命令行
@@ -160,6 +176,7 @@ auth:
     username: "jwt"             # JWT模式固定用户名
     secret: your-jwt-secret
     algorithm: HS256
+    issuer: sftp-proxy          # JWT签发者
     redis_enabled: false
   s3:
     # S3签名验证模式 - 客户端提供带签名的URL，服务器验证签名后通过存储后端访问S3
@@ -286,6 +303,7 @@ get https://mybucket.s3.amazonaws.com/reports/data.csv?X-Amz-Signature=...
 
 ## 安全
 
+- 配置验证：启动时检查admin_token和JWT密钥长度
 - Token过期时间控制
 - 路径访问限制
 - 下载次数限制

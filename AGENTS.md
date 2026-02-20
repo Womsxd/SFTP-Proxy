@@ -135,6 +135,7 @@ api:
 sftp:token:{token_value}
   - paths: ["file1.txt", "dir1/"]
   - download_limits: {"file1.txt": 3}
+  - rate_limit: 1024             # 下载限速（KB/s），null表示使用全局配置
   - created_at: timestamp
   - expires_at: timestamp
 
@@ -168,6 +169,24 @@ sftp:jwt:{token_value}:downloads
 Authorization: Bearer <admin_token>
 ```
 
+### 创建Token请求体
+```json
+{
+  "paths": ["/file1.txt", "/dir1/"],
+  "expire": 600,
+  "download_limits": {"/file1.txt": 3},
+  "rate_limit": 1024,
+  "auth_type": "token"
+}
+```
+
+**参数说明：**
+- `paths`: 允许访问的路径列表（必填）
+- `expire`: 过期时间（秒），默认使用配置中的default_expire
+- `download_limits`: 下载次数限制，格式为 `{路径: 次数}`
+- `rate_limit`: 下载限速（KB/s），null或不填则使用全局配置，优先级高于全局配置
+- `auth_type`: 认证类型，`token` 或 `jwt`
+
 ## 日志格式
 
 ### API日志 (logs/api/api-YYYY-MM-DD.log)
@@ -195,6 +214,7 @@ class AuthResult:
     paths: list[str]
     download_limits: dict
     session_id: str
+    rate_limit: Optional[int] = None
     error: Optional[str] = None
     extra_data: Optional[dict] = None
 
