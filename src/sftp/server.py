@@ -134,7 +134,6 @@ class SFTPInterface(ServerInterface):
 
         if result.success:
             self.auth_result = result
-            # Token模式：username就是token；JWT模式：password是JWT token
             if auth_type == 'token':
                 self.token = username
             elif auth_type == 'jwt':
@@ -147,7 +146,8 @@ class SFTPInterface(ServerInterface):
                 allowed_paths=result.paths,
                 download_limits=result.download_limits,
                 token=self.token,
-                redis_client=redis_client
+                redis_client=redis_client,
+                rate_limit=result.rate_limit
             )
             return paramiko.AUTH_SUCCESSFUL
         else:

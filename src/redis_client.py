@@ -162,7 +162,7 @@ class TokenStore:
         self._redis = redis_client or RedisClient()
 
     def create_token(self, token: str, paths: list, download_limits: Optional[dict] = None,
-                     expire: Optional[int] = None) -> dict:
+                     expire: Optional[int] = None, rate_limit: Optional[int] = None) -> dict:
         cfg = get_config()
         if expire is None:
             expire = cfg.token.get('default_expire', 600)
@@ -178,7 +178,8 @@ class TokenStore:
             'download_limits': json.dumps(download_limits or {}),
             'downloads': json.dumps({}),
             'created_at': str(now),
-            'expires_at': str(expires_at)
+            'expires_at': str(expires_at),
+            'rate_limit': str(rate_limit) if rate_limit is not None else ''
         }
         for field, value in data.items():
             self._redis.hset(key, field, value)
@@ -188,7 +189,8 @@ class TokenStore:
             'token': token,
             'paths': paths,
             'download_limits': download_limits,
-            'expires_at': expires_at
+            'expires_at': expires_at,
+            'rate_limit': rate_limit
         }
 
     def get_token(self, token: str) -> Optional[dict]:
@@ -202,12 +204,20 @@ class TokenStore:
                 self._redis.delete(key)
                 return None
 
+        rate_limit = None
+        if data.get('rate_limit'):
+            try:
+                rate_limit = int(data['rate_limit'])
+            except (ValueError, TypeError):
+                rate_limit = None
+
         return {
             'paths': json.loads(data.get('paths', '[]')),
             'download_limits': json.loads(data.get('download_limits', '{}')),
             'downloads': json.loads(data.get('downloads', '{}')),
             'created_at': float(data.get('created_at', 0)),
-            'expires_at': float(data.get('expires_at', 0))
+            'expires_at': float(data.get('expires_at', 0)),
+            'rate_limit': rate_limit
         }
 
     def delete_token(self, token: str) -> bool:

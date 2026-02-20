@@ -7,11 +7,12 @@ from src.config import get_config
 
 class Session:
     def __init__(self, session_id: str, allowed_paths: list, download_limits: dict,
-                 token: str = None, redis_client: RedisClient = None):
+                 token: str = None, redis_client: RedisClient = None, rate_limit: int = None):
         self.session_id = session_id
         self.allowed_paths = allowed_paths
         self.download_limits = download_limits
         self.token = token
+        self.rate_limit = rate_limit
         self._redis = redis_client
         self._last_activity = time.time()
         cfg = get_config()

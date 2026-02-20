@@ -9,6 +9,7 @@ class AuthResult:
     paths: list[str]
     download_limits: dict
     session_id: str
+    rate_limit: Optional[int] = None
     error: Optional[str] = None
     extra_data: Optional[dict] = None
 

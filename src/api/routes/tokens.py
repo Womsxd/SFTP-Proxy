@@ -13,7 +13,8 @@ class CreateTokenRequest(BaseModel):
     paths: list[str]
     expire: Optional[int] = None
     download_limits: Optional[dict] = None
-    auth_type: str = "token"  # token | jwt
+    rate_limit: Optional[int] = None
+    auth_type: str = "token"
 
 
 class TokenResponse(BaseModel):
@@ -21,6 +22,7 @@ class TokenResponse(BaseModel):
     expires_at: float
     paths: list[str]
     download_limits: Optional[dict]
+    rate_limit: Optional[int]
 
 
 @router.post("", response_model=TokenResponse)
@@ -37,9 +39,10 @@ async def create_token(
             token=token,
             paths=request.paths,
             download_limits=request.download_limits,
-            expire=request.expire
+            expire=request.expire,
+            rate_limit=request.rate_limit
         )
-        api_log("CREATE_TOKEN", f"token={token[:8]}... paths={request.paths} expire={request.expire}")
+        api_log("CREATE_TOKEN", f"token={token[:8]}... paths={request.paths} expire={request.expire} rate_limit={request.rate_limit}")
         return TokenResponse(**result)
 
     elif request.auth_type == "jwt":
@@ -48,14 +51,16 @@ async def create_token(
         token = jwt_auth.create_token(
             paths=request.paths,
             download_limits=request.download_limits,
-            expire=request.expire or cfg.token.get('default_expire', 600)
+            expire=request.expire or cfg.token.get('default_expire', 600),
+            rate_limit=request.rate_limit
         )
-        api_log("CREATE_TOKEN", f"jwt_token created paths={request.paths} expire={request.expire}")
+        api_log("CREATE_TOKEN", f"jwt_token created paths={request.paths} expire={request.expire} rate_limit={request.rate_limit}")
         return TokenResponse(
             token=token,
-            expires_at=0,  # JWT has its own expiration
+            expires_at=0,
             paths=request.paths,
-            download_limits=request.download_limits
+            download_limits=request.download_limits,
+            rate_limit=request.rate_limit
         )
     else:
         raise HTTPException(status_code=400, detail="Invalid auth_type. Use 'token' or 'jwt'")
@@ -81,7 +86,8 @@ async def get_token(
             data = {
                 'paths': payload.get('paths', []),
                 'download_limits': payload.get('download_limits', {}),
-                'expires_at': payload.get('exp', 0)
+                'expires_at': payload.get('exp', 0),
+                'rate_limit': payload.get('rate_limit')
             }
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid JWT: {str(e)}")
@@ -137,7 +143,8 @@ async def get_downloads(
             payload = pyjwt.decode(token, jwt_auth._secret, algorithms=[jwt_auth._algorithm], options={"verify_exp": False})
             data = {
                 'paths': payload.get('paths', []),
-                'download_limits': payload.get('download_limits', {})
+                'download_limits': payload.get('download_limits', {}),
+                'rate_limit': payload.get('rate_limit')
             }
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid JWT: {str(e)}")
@@ -151,5 +158,6 @@ async def get_downloads(
         "token": token[:8] + "..." if len(token) > 16 else token,
         "paths": data.get('paths', []),
         "download_limits": data.get('download_limits', {}),
-        "downloads": data.get('downloads', {})
+        "downloads": data.get('downloads', {}),
+        "rate_limit": data.get('rate_limit')
     }

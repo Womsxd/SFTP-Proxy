@@ -101,19 +101,21 @@ class JWTAuth(BaseAuth):
 
         paths = payload.get('paths', [])
         download_limits = payload.get('download_limits', {})
+        rate_limit = payload.get('rate_limit')
         session_id = str(uuid.uuid4())
 
-        sftp_log("AUTH_SUCCESS", f"mode=jwt username={username} token={token[:8]}... paths={paths} client={client_ip}")
+        sftp_log("AUTH_SUCCESS", f"mode=jwt username={username} token={token[:8]}... paths={paths} rate_limit={rate_limit} client={client_ip}")
 
         return AuthResult(
             success=True,
             paths=paths,
             download_limits=download_limits,
-            session_id=session_id
+            session_id=session_id,
+            rate_limit=rate_limit
         )
 
     def create_token(self, paths: list, download_limits: Optional[dict] = None,
-                     expire: int = 600) -> str:
+                     expire: int = 600, rate_limit: Optional[int] = None) -> str:
         cfg = get_config()
         max_expire = cfg.token.get('max_expire', 86400)
         expire = min(expire, max_expire)
@@ -124,7 +126,8 @@ class JWTAuth(BaseAuth):
             'iat': now,
             'exp': now + expire,
             'paths': paths,
-            'download_limits': download_limits or {}
+            'download_limits': download_limits or {},
+            'rate_limit': rate_limit
         }
 
         return jwt.encode(payload, self._secret, algorithm=self._algorithm)

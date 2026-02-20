@@ -46,12 +46,14 @@ class TokenAuth(BaseAuth):
         session_id = str(uuid.uuid4())
         paths = token_data.get('paths', [])
         download_limits = token_data.get('download_limits', {})
+        rate_limit = token_data.get('rate_limit')
 
-        sftp_log("AUTH_SUCCESS", f"mode=token token={token[:8]}... paths={paths} client={client_ip}")
+        sftp_log("AUTH_SUCCESS", f"mode=token token={token[:8]}... paths={paths} rate_limit={rate_limit} client={client_ip}")
 
         return AuthResult(
             success=True,
             paths=paths,
             download_limits=download_limits,
-            session_id=session_id
+            session_id=session_id,
+            rate_limit=rate_limit
         )

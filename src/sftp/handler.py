@@ -184,11 +184,11 @@ class SFTPHandler(SFTPServerInterface):
         self.root = '/'
         self.sftp_log = sftp_log
         self.s3_mode = s3_mode
-        self.storage_type = storage_type  # disk 或 s3
+        self.storage_type = storage_type
         
-        # 获取限速配置
         cfg = get_config()
-        self.rate_limit_kb = cfg.server.get('rate_limit', 0)
+        global_rate_limit = cfg.server.get('rate_limit', 0)
+        self.rate_limit_kb = session.rate_limit if session.rate_limit is not None else global_rate_limit
 
     def _check_timeout(self) -> bool:
         if self.session.is_timeout():
