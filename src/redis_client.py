@@ -223,8 +223,14 @@ class TokenStore:
             return False, 0, None
 
         download_limits = token_data.get('download_limits', {})
-        if path in download_limits:
-            limit = download_limits[path]
+
+        normalized_limits = {}
+        for limit_path, limit in download_limits.items():
+            normalized_path = limit_path if limit_path.startswith('/') else '/' + limit_path
+            normalized_limits[normalized_path] = limit
+
+        if path in normalized_limits:
+            limit = normalized_limits[path]
             key = self._redis._key('token', token, 'downloads', path.replace('/', '_'))
             current = self._redis.incr(key)
             if current == 1:
