@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Optional
@@ -10,13 +11,39 @@ class DatePrefixTimedRotatingFileHandler(TimedRotatingFileHandler):
     def __init__(self, filename: str, when: str = 'midnight', interval: int = 1,
                  backupCount: int = 0, encoding: str = 'utf-8', delay: bool = False):
         self._base_filename = filename
+        self._last_date = time.strftime('%Y-%m-%d')
         super().__init__(filename, when, interval, backupCount, encoding, delay)
+
+    def _get_dated_filename(self, date_str: str) -> str:
+        base_dir = os.path.dirname(self._base_filename)
+        base_name = os.path.basename(self._base_filename)
+        name, ext = os.path.splitext(base_name)
+        dated_name = f"{name}-{date_str}{ext}"
+        return os.path.join(base_dir, dated_name) if base_dir else dated_name
 
     def _open(self):
         log_dir = os.path.dirname(self.baseFilename)
         if log_dir and not os.path.exists(log_dir):
             os.makedirs(log_dir, exist_ok=True)
         return super()._open()
+
+    def shouldRollover(self, record):
+        current_date = time.strftime('%Y-%m-%d')
+        if current_date != self._last_date:
+            return True
+        return False
+
+    def doRollover(self):
+        if self.stream:
+            self.stream.close()
+            self.stream = None  # type: ignore[assignment]
+        
+        dated_file = self._get_dated_filename(self._last_date)
+        if os.path.exists(self.baseFilename):
+            os.rename(self.baseFilename, dated_file)
+        
+        self._last_date = time.strftime('%Y-%m-%d')
+        self.stream = self._open()  # type: ignore[assignment]
 
 
 def setup_logger(name: str, log_file: str, level: str = "INFO",
