@@ -75,6 +75,9 @@ server:
   connection_timeout: 300         # 连接超时（秒）
   operation_timeout: 60           # 操作超时（秒）
   rate_limit: 0                   # 下载限速（KB/s），0表示不限速
+  max_connections: 100            # 最大并发连接数
+  thread_pool_size: 50            # 线程池大小
+  backlog: 128                    # socket监听队列长度
 
 redis:
   host: localhost

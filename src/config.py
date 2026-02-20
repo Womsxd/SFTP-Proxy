@@ -29,7 +29,10 @@ class Config:
             "sftp_port": 2222,
             "api_port": 8080,
             "host_key": "./ssh_host_key",
-            "host_key_type": "rsa"
+            "host_key_type": "rsa",
+            "max_connections": 100,
+            "thread_pool_size": 50,
+            "backlog": 128
         }
         self.redis = {
             "host": "localhost",

@@ -1,6 +1,9 @@
 import os
 import socket
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 import paramiko
 from paramiko.server import ServerInterface
 from paramiko.transport import Transport
@@ -221,29 +224,26 @@ class SFTPInterface(ServerInterface):
         return False
 
 
-class ClientHandler(threading.Thread):
-    """处理单个客户端连接的线程"""
+class ClientHandler:
+    """处理单个客户端连接（由线程池调用）"""
     
     def __init__(self, client_socket, addr, host_key, host_key_type):
-        super().__init__(daemon=True)
         self.client_socket = client_socket
         self.addr = addr
         self.host_key = host_key
         self.host_key_type = host_key_type
         self.transport = None
         
-    def run(self):
+    def __call__(self):
+        """使实例可调用，适配ThreadPoolExecutor"""
         try:
             self.transport = Transport(self.client_socket)
             self.transport.add_server_key(self._load_host_key())
-            # 注册 SFTP handler，让 check_channel_subsystem_request 处理子系统请求
-            # 注意：这里使用 BaseSFTPServer 作为基础，实际的 SFTPHandler 在 check_channel_subsystem_request 中通过 CustomSFTPServer 创建
             self.transport.set_subsystem_handler('sftp', BaseSFTPServer)
             
             server = SFTPInterface(self.addr, self.host_key)
             self.transport.start_server(server=server)
             
-            # 等待连接关闭
             while self.transport.is_active():
                 self.transport.join(timeout=1.0)
                 
@@ -263,24 +263,38 @@ class ClientHandler(threading.Thread):
 
 
 class SFTPServerThread(threading.Thread):
-    def __init__(self, host: str, port: int, host_key: str, host_key_type: str = 'rsa'):
+    """SFTP服务器主线程，使用线程池处理客户端连接"""
+    
+    def __init__(self, host: str, port: int, host_key: str, host_key_type: str = 'rsa',
+                 max_connections: int = 100, thread_pool_size: int = 50, backlog: int = 128):
         super().__init__(daemon=True)
         self.host = host
         self.port = port
         self.host_key = host_key
         self.host_key_type = host_key_type
-        self.socket = None
+        self.max_connections = max_connections
+        self.thread_pool_size = thread_pool_size
+        self.backlog = backlog
+        self.socket: Optional[socket.socket] = None
         self.running = False
-        self.clients = []
+        self._executor: Optional[ThreadPoolExecutor] = None
+        self._active_connections = 0
+        self._connections_lock = threading.Lock()
 
     def run(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind((self.host, self.port))
-        self.socket.listen(100)
+        self.socket.listen(self.backlog)
         self.running = True
 
-        sftp_log("SERVER_START", f"SFTP server started on {self.host}:{self.port}")
+        self._executor = ThreadPoolExecutor(
+            max_workers=self.thread_pool_size,
+            thread_name_prefix="sftp-client"
+        )
+
+        sftp_log("SERVER_START", f"SFTP server started on {self.host}:{self.port} "
+                f"max_connections={self.max_connections} pool_size={self.thread_pool_size}")
 
         while self.running:
             try:
@@ -290,41 +304,64 @@ class SFTPServerThread(threading.Thread):
                 except socket.timeout:
                     continue
 
-                sftp_log("CONNECT", f"client={addr[0]}:{addr[1]}")
+                with self._connections_lock:
+                    if self._active_connections >= self.max_connections:
+                        sftp_log("CONNECTION_REJECTED", f"client={addr[0]}:{addr[1]} "
+                                f"reason=max_connections_reached limit={self.max_connections}", "WARN")
+                        try:
+                            client.close()
+                        except:
+                            pass
+                        continue
+                    self._active_connections += 1
+
+                sftp_log("CONNECT", f"client={addr[0]}:{addr[1]} "
+                        f"active={self._active_connections}/{self.max_connections}")
                 
-                # 为每个客户端创建独立线程
-                client_handler = ClientHandler(client, addr, self.host_key, self.host_key_type)
-                client_handler.start()
-                self.clients.append(client_handler)
-                
-                # 清理已结束的客户端线程
-                self.clients = [c for c in self.clients if c.is_alive()]
+                handler = ClientHandler(client, addr, self.host_key, self.host_key_type)
+                future = self._executor.submit(self._wrap_handler, handler, addr)
+                future.add_done_callback(lambda f: self._on_connection_done(addr))
 
             except Exception as e:
                 if self.running:
                     sftp_log("CONNECTION_ERROR", f"error={str(e)}", "ERROR")
 
+    def _wrap_handler(self, handler: ClientHandler, addr):
+        """包装处理器，捕获异常"""
+        try:
+            handler()
+        except Exception as e:
+            sftp_log("HANDLER_ERROR", f"client={addr[0]}:{addr[1]} error={str(e)}", "ERROR")
+
+    def _on_connection_done(self, addr):
+        """连接完成回调"""
+        with self._connections_lock:
+            self._active_connections -= 1
+
     def stop(self):
         self.running = False
         if self.socket:
             self.socket.close()
-        # 等待所有客户端线程结束
-        for client in self.clients:
-            if client.is_alive():
-                client.join(timeout=2.0)
+        if self._executor:
+            self._executor.shutdown(wait=False, cancel_futures=True)
         sftp_log("SERVER_STOP", "SFTP server stopped")
 
     def _load_host_key(self) -> paramiko.PKey:
         return load_or_generate_host_key(self.host_key, self.host_key_type)
 
 
-def start_sftp_server(host: str = None, port: int = None, host_key: str = None, host_key_type: str = None) -> SFTPServerThread:
+def start_sftp_server(host: str = None, port: int = None, host_key: str = None, 
+                      host_key_type: str = None) -> SFTPServerThread:
     cfg = get_config()
     host = host or cfg.server.get('host', '0.0.0.0')
     port = port or cfg.server.get('sftp_port', 2222)
     host_key = host_key or cfg.server.get('host_key', './ssh_host_key')
     host_key_type = host_key_type or cfg.server.get('host_key_type', 'rsa')
+    max_connections = cfg.server.get('max_connections', 100)
+    thread_pool_size = cfg.server.get('thread_pool_size', 50)
+    backlog = cfg.server.get('backlog', 128)
 
-    server = SFTPServerThread(host, port, host_key, host_key_type)
+    server = SFTPServerThread(host, port, host_key, host_key_type, 
+                              max_connections, thread_pool_size, backlog)
     server.start()
     return server
