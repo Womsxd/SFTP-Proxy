@@ -75,18 +75,18 @@ class Application:
             self.running = False
 
         sftp_log("APP_STOP", "SFTP Proxy stopping...")
-        api_log("APP_STOP", "SFTP Proxy stopping...")
+        api_log("APP_STOP", "SFTP Proxy API stopping...")
 
         if self.sftp_server:
             self.sftp_server.stop()
 
         sftp_log("APP_STOPPED", "SFTP Proxy stopped")
-        api_log("APP_STOPPED", "SFTP Proxy stopped")
+        api_log("APP_STOPPED", "SFTP Proxy API stopped")
 
     def reload(self):
         reload_config()
         sftp_log("APP_RELOAD", "Configuration reloaded")
-        api_log("APP_RELOAD", "Configuration reloaded")
+        api_log("APP_RELOAD", "API Configuration reloaded")
 
     def _setup_signal_handlers(self):
         def signal_handler(signum, frame):
