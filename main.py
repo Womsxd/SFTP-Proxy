@@ -11,6 +11,7 @@ from src.config import load_config, reload_config, get_config
 from src.sftp.server import SFTPServerThread, start_sftp_server
 from src.api.app import app
 from src.logger import api_log, sftp_log
+from src.redis_client import get_redis
 
 
 class Application:
@@ -30,6 +31,9 @@ class Application:
             for error in validation_errors:
                 print(f"  - {error}", file=sys.stderr)
             sys.exit(1)
+
+        print("[Redis] Connecting...")
+        get_redis()
 
         sftp_log("APP_START", "SFTP Proxy starting...")
         api_log("APP_START", "SFTP Proxy API starting...")
@@ -122,6 +126,20 @@ def main():
         print(f"Configuration loaded successfully from {args.config}")
         print(f"Auth type: {cfg.auth.get('type')}")
         print(f"Storage type: {cfg.storage.get('type')}")
+        
+        auth_type = cfg.auth.get('type')
+        redis_required = auth_type == 'token' or (auth_type == 'jwt' and cfg.auth.get('jwt', {}).get('redis_enabled', False))
+        
+        if redis_required:
+            print("\nTesting Redis connection...")
+            redis_client = get_redis()
+            if redis_client.ping():
+                print("[Redis] Connection test: OK")
+            else:
+                print("[Redis] Connection test: FAILED")
+                sys.exit(1)
+        else:
+            print("\n[Redis] Skipped (not required for current auth type)")
         return
 
     app = Application()
